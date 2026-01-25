@@ -1,0 +1,78 @@
+#!/bin/bash
+
+# Help function
+show_help() {
+    cat << EOF
+Usage: $(basename "$0") [OPTIONS] <file1> [file2] [file3] ...
+
+Renames files by replacing spaces with underscores.
+
+OPTIONS:
+    -h, --help      Show this help message and exit
+
+EXAMPLES:
+    $(basename "$0") "file with spaces.txt"
+    $(basename "$0") "file 1.txt" "file 2.txt"
+    $(basename "$0") "/path/to/file with spaces.pdf"
+
+DESCRIPTION:
+    This script takes one or more file paths as arguments and renames them
+    by replacing all spaces in the filename with underscores. The directory
+    path is preserved. If a file with the new name already exists, the
+    operation is skipped for that file.
+
+EOF
+    exit 0
+}
+
+# Check for help flag
+if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+    show_help
+fi
+
+# Check if at least one argument is provided
+if [ $# -eq 0 ]; then
+    echo "Usage: $(basename "$0") <file1> [file2] [file3] ..."
+    echo "Renames files by replacing spaces with underscores"
+    echo "Use -h or --help for more information"
+    exit 1
+fi
+
+# Process each file argument
+for file in "$@"; do
+    # Check if file exists
+    if [ ! -e "$file" ]; then
+        echo "Error: '$file' does not exist"
+        continue
+    fi
+
+    # Get directory and filename
+    dir=$(dirname "$file")
+    base=$(basename "$file")
+
+    # Replace spaces with underscores
+    newbase="${base// /_}"
+
+    # If the name doesn't change, skip it
+    if [ "$base" = "$newbase" ]; then
+        echo "Skipping '$file' (no spaces found)"
+        continue
+    fi
+
+    # Construct new path
+    if [ "$dir" = "." ]; then
+        newfile="$newbase"
+    else
+        newfile="$dir/$newbase"
+    fi
+
+    # Check if target already exists
+    if [ -e "$newfile" ]; then
+        echo "Error: '$newfile' already exists, skipping '$file'"
+        continue
+    fi
+
+    # Rename the file
+    mv "$file" "$newfile"
+    echo "Renamed: '$file' -> '$newfile'"
+done

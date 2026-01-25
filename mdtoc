@@ -1,0 +1,148 @@
+#!/bin/bash
+
+# A script to generate a Table of Contents for a Markdown file,
+# selected via fzf, and insert it into the file.
+
+set -e
+set -o pipefail
+
+usage() {
+  cat << EOF
+Usage: mdtoc [-i | --insert] | [-p | --print] | [-h | --help]
+
+Generate or insert a table of contents for Markdown files using fzf.
+
+OPTIONS:
+  -i, --insert    Insert/update the ToC in the selected file
+  -p, --print     Print the ToC to the console using glow, bat, or less
+  -h, --help      Show this help message and exit
+
+DESCRIPTION:
+  This script uses fzf to interactively select a Markdown file from your
+  notes directory, then either inserts a ToC into the file or prints it.
+
+  When inserting, the script removes any existing ToC (between <!-- TOC -->
+  and <!-- /TOC --> markers) and inserts a fresh one after the first blank
+  line, or at the beginning if no blank line is found.
+
+  Updates are logged to ~/Dropbox/notes/computing/log.md
+
+EXAMPLES:
+  mdtoc -i        # Select file and insert ToC
+  mdtoc --print   # Select file and preview ToC
+
+REQUIREMENTS:
+  - fzf (for file selection)
+  - glow or bat (optional, for better preview output)
+
+EOF
+}
+
+# --- Argument Parsing ---
+ACTION=""
+if [ "$#" -ne 1 ]; then
+  usage
+  exit 1
+fi
+
+case $1 in
+  -i|--insert)
+    ACTION="insert"
+    ;;
+  -p|--print)
+    ACTION="print"
+    ;;
+  -h|--help)
+    usage
+    exit 0
+    ;;
+  *)
+    echo "Error: Invalid argument."
+    echo ""
+    usage
+    exit 1
+    ;;
+esac
+
+# --- File Selection via fzf ---
+NOTES_DIR="/home/arielc/Dropbox/notes"
+MARKDOWN_FILE=$(find "$NOTES_DIR" -type f \( -name "*.md" -o -name "*.markdown" \) | fzf --prompt="Select a Markdown file to process: " --height="40%" --border)
+
+if [ -z "$MARKDOWN_FILE" ]; then
+  echo "No file selected."
+  exit 0
+fi
+
+# --- ToC Generation ---
+generate_toc() {
+  echo "<!-- TOC -->"
+  echo "## Table of Contents"
+  awk '
+  /^#+ / {
+    level = gsub(/#/, "", $1);
+    title = $0;
+    sub(/^#+ /, "", title);
+    anchor = tolower(title);
+    gsub(/[[:punct:]]/, "", anchor);
+    gsub(/ /, "-", anchor);
+    indent = "";
+    for (i = 1; i < level; i++) {
+      indent = indent "  ";
+    }
+    printf "%s* [%s](#%s)\n", indent, title, anchor;
+  }
+  ' "$MARKDOWN_FILE"
+  echo "<!-- /TOC -->"
+}
+
+# --- Display Function ---
+display_output() {
+    if command -v glow &> /dev/null; then
+        glow -
+    elif command -v bat &> /dev/null; then
+        bat --language md --paging=always
+    else
+        less
+    fi
+}
+
+# --- Execution ---
+if [ "$ACTION" = "insert" ]; then
+  TOC_CONTENT=$(generate_toc)
+  TEMP_NO_TOC=$(mktemp)
+  TEMP_FINAL=$(mktemp)
+
+  awk '/<!-- TOC -->/,/<!-- \/TOC -->/ {next} {print}' "$MARKDOWN_FILE" > "$TEMP_NO_TOC"
+
+  INSERTED_FLAG=$(mktemp)
+  rm "$INSERTED_FLAG"
+
+  awk -v toc="$TOC_CONTENT" -v flag_file="$INSERTED_FLAG" '
+    !inserted && /^$/ {
+      print;
+      print toc;
+      inserted=1;
+      system("touch " flag_file);
+      next
+    }
+    { print }
+  ' "$TEMP_NO_TOC" > "$TEMP_FINAL"
+
+  if [ ! -f "$INSERTED_FLAG" ]; then
+    (echo "$TOC_CONTENT"; echo; cat "$TEMP_NO_TOC") > "$TEMP_FINAL"
+  fi
+
+  mv "$TEMP_FINAL" "$MARKDOWN_FILE"
+  echo "Table of Contents updated in '$MARKDOWN_FILE'."
+
+  rm "$TEMP_NO_TOC"
+  rm -f "$INSERTED_FLAG"
+
+  LOG_FILE="/home/arielc/Dropbox/notes/computing/log.md"
+  mkdir -p "$(dirname "$LOG_FILE")"
+  echo "* **mdtoc**: Updated ToC in \`$MARKDOWN_FILE\` on $(date +"%Y-%m-%d %H:%M:%S")" >> "$LOG_FILE"
+  echo "Logged update to $LOG_FILE."
+
+elif [ "$ACTION" = "print" ]; then
+  generate_toc | display_output
+fi

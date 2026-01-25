@@ -1,0 +1,8 @@
+bg-dark: #1a1a2e
+bg-light: #f5f5f5
+
+#6C5CE7
+#A29BFE
+#FF6B9D
+#00B894
+#FDCB6E

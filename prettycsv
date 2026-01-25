@@ -1,0 +1,39 @@
+#!/bin/bash
+
+# Check for help flag
+if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+  cat << EOF
+Usage: $(basename "$0") [file.csv]
+       cat data.csv | $(basename "$0")
+
+Format and display CSV files in a readable column format.
+
+ARGUMENTS:
+    file.csv        CSV file to display (optional, reads from stdin if not provided)
+
+OPTIONS:
+    -h, --help      Show this help message and exit
+
+DESCRIPTION:
+    Formats CSV files with aligned columns for easier reading in the terminal.
+    Uses 'less' for pagination with the following options:
+      -F  Quit if content fits on one screen
+      -S  Chop long lines (no line wrapping)
+      -X  Don't clear screen on exit
+      -K  Exit immediately on Ctrl-C
+
+EXAMPLES:
+    $(basename "$0") data.csv
+    cat large_file.csv | $(basename "$0")
+
+REQUIREMENTS:
+    - perl
+    - column
+    - less
+
+EOF
+  exit 0
+fi
+
+perl -pe 's/((?<=,)|(?<=^)),/ ,/g;' "$@" | column -t -s, | exec less  -F -S -X -K
+

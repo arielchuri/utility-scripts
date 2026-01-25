@@ -1,0 +1,48 @@
+#!/bin/bash
+
+# Check for help flag
+if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+  cat << EOF
+Usage: $(basename "$0") <file.md>
+
+Generate a table of contents from Markdown headings.
+
+ARGUMENTS:
+    <file.md>       Markdown file to process
+
+OPTIONS:
+    -h, --help      Show this help message and exit
+
+DESCRIPTION:
+    Extracts headings (lines starting with #) from a Markdown file and
+    converts them to a Markdown list with anchor links. Output is printed
+    to stdout.
+
+EXAMPLE:
+    $(basename "$0") README.md
+    $(basename "$0") document.md > toc.md
+
+OUTPUT EXAMPLE:
+    - [Heading 1](#heading-1)
+      - [Heading 2](#heading-2)
+
+EOF
+  exit 0
+fi
+
+file="$1"
+if [[ -z "$file" || ! -f "$file" ]]; then
+  echo "Error: No file provided or file does not exist" >&2
+  echo "Use -h or --help for usage information" >&2
+  exit 1
+fi
+
+grep -E '^#{1,6} ' "$file" | awk '
+{
+  gsub("#", ""); gsub(/^[ ]*/, ""); 
+  level = length($0)-length($0+0);
+  link = tolower($0);
+  gsub(" ", "-", link);
+  print (level > 1 ? "  " : "") "- [" $0 "](#" link ")"
+}'
+
