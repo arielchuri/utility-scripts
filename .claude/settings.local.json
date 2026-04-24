@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./fetchurls:*)",
+      "Bash(./generate_md_toc.sh:*)",
+      "Bash(./mdtoc:*)",
+      "Bash(./palette:*)",
+      "Bash(./prettycsv.sh:*)",
+      "Bash(./rename-spaces:*)",
+      "Bash(git init:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

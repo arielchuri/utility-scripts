@@ -1,0 +1,382 @@
+#!/usr/bin/env python3
+"""
+Display Hyprland keybinds in a human-readable format with Nerd Font icons
+"""
+import subprocess
+import sys
+import argparse
+from collections import defaultdict
+
+# Modifier mask mappings (based on X11 modifier masks)
+MODMASK_MAP = {
+    0: "",
+    1: "Shift",
+    4: "Ctrl",
+    5: "Ctrl+Shift",
+    8: "Alt",
+    9: "Alt+Shift",
+    64: "Super",
+    65: "Super+Shift",
+    68: "Super+Ctrl",
+    72: "Super+Alt",
+}
+
+# Category definitions with Nerd Font icons
+CATEGORIES = {
+    'workspace': {'icon': '󰘳', 'name': 'WORKSPACES', 'dispatchers': ['workspace', 'movetoworkspace', 'togglespecialworkspace']},
+    'window': {'icon': '󱂬', 'name': 'WINDOWS', 'dispatchers': ['killactive', 'togglefloating', 'movefocus', 'pseudo', 'togglesplit', 'movewindow', 'resizewindow', 'resizeactive', 'fullscreen']},
+    'exec': {'icon': '', 'name': 'APPLICATIONS', 'dispatchers': ['exec']},
+    'mouse': {'icon': '󰍽', 'name': 'MOUSE', 'dispatchers': ['mouse']},
+    'media': {'icon': '󰍹', 'name': 'MEDIA & SYSTEM', 'dispatchers': []},
+    'other': {'icon': '󰠱', 'name': 'OTHER', 'dispatchers': []},
+}
+
+def get_binds():
+    """Get keybinds from hyprctl"""
+    try:
+        result = subprocess.run(['hyprctl', 'binds'], capture_output=True, text=True, check=True)
+        return result.stdout
+    except subprocess.CalledProcessError as e:
+        print(f"Error running hyprctl: {e}", file=sys.stderr)
+        sys.exit(1)
+    except FileNotFoundError:
+        print("hyprctl not found. Is Hyprland installed?", file=sys.stderr)
+        sys.exit(1)
+
+def parse_binds(output):
+    """Parse hyprctl binds output into structured data"""
+    binds = []
+    current_bind = {}
+
+    for line in output.strip().split('\n'):
+        line = line.strip()
+
+        if line in ['bind', 'bindm', 'bindle', 'bindl']:
+            if current_bind:
+                binds.append(current_bind)
+            current_bind = {'type': line}
+        elif ':' in line:
+            key, value = line.split(':', 1)
+            current_bind[key.strip()] = value.strip()
+
+    if current_bind:
+        binds.append(current_bind)
+
+    return binds
+
+def format_key(key):
+    """Format special key names"""
+    key_map = {
+        'mouse_down': 'Scroll Down',
+        'mouse_up': 'Scroll Up',
+        'mouse:272': 'LClick',
+        'mouse:273': 'RClick',
+    }
+    return key_map.get(key, key)
+
+def categorize_bind(bind):
+    """Determine the category of a bind"""
+    dispatcher = bind.get('dispatcher', '')
+    arg = bind.get('arg', '')
+    key = bind.get('key', '')
+
+    # Check if it's a mouse bind
+    if bind.get('type') == 'bindm' or 'mouse' in key:
+        return 'mouse'
+
+    # Check media/system keys
+    if key.startswith('XF86'):
+        return 'media'
+
+    # Check other categories
+    for cat_name, cat_info in CATEGORIES.items():
+        if dispatcher in cat_info['dispatchers']:
+            return cat_name
+
+    return 'other'
+
+def format_bind(bind):
+    """Format a single bind into readable text"""
+    modmask = int(bind.get('modmask', 0))
+    key = bind.get('key', '')
+    dispatcher = bind.get('dispatcher', '')
+    arg = bind.get('arg', '')
+    bind_type = bind.get('type', 'bind')
+
+    # Get modifier string
+    mod_str = MODMASK_MAP.get(modmask, f"Mod{modmask}")
+
+    # Format the key combination
+    if mod_str:
+        keybind = f"{mod_str}+{format_key(key)}"
+    else:
+        keybind = format_key(key)
+
+    # Format the action with icons
+    # Handle special keys first (media, volume, brightness)
+    if key.startswith('XF86'):
+        if 'AudioRaiseVolume' in key or 'AudioLowerVolume' in key:
+            action = "󰝝 volume up" if 'Raise' in key else "󰝞 volume down"
+        elif 'AudioMute' in key:
+            action = "󰍭 toggle mic mute" if 'Mic' in key else "󰝟 toggle mute"
+        elif 'MonBrightnessUp' in key or 'MonBrightnessDown' in key:
+            action = "󰃠 brightness up" if 'Up' in key else "󰃞 brightness down"
+        elif 'AudioNext' in key:
+            action = "󰒭 next track"
+        elif 'AudioPrev' in key:
+            action = "󰒮 previous track"
+        elif 'AudioPlay' in key or 'AudioPause' in key:
+            action = "󰐊 play/pause"
+        else:
+            action = f"󰍹 {arg}"
+    elif dispatcher == 'exec':
+        # Try to extract just the command name
+        cmd = arg.split()[0] if arg else ''
+        # Handle shell commands
+        if 'command -v' in arg or '&&' in arg or '||' in arg:
+            if 'hyprshutdown' in arg or 'exit' in arg:
+                action = " shutdown/exit"
+            else:
+                action = f" exec: {arg[:40]}..."
+        elif len(arg) > 50:
+            action = f" {cmd}..."
+        else:
+            # Add specific icons for known apps
+            if 'konsole' in arg or 'kitty' in arg or 'alacritty' in arg:
+                action = f" {cmd}"
+            elif 'dolphin' in arg or 'thunar' in arg or 'nautilus' in arg:
+                action = f" {cmd}"
+            elif 'launcher' in arg.lower() or 'rofi' in arg or 'wofi' in arg:
+                action = f" {cmd}"
+            elif 'browser' in arg or 'firefox' in arg or 'chrome' in arg:
+                action = f"󰈹 {cmd}"
+            else:
+                action = f" {cmd}"
+    elif dispatcher == 'workspace':
+        action = f"󰝘 workspace {arg}"
+    elif dispatcher == 'movetoworkspace':
+        action = f"󰜹 move to workspace {arg}"
+    elif dispatcher == 'togglespecialworkspace':
+        action = f"󰝘 toggle special workspace" + (f" {arg}" if arg else "")
+    elif dispatcher == 'movefocus':
+        direction_map = {'l': '󰁍 left', 'r': '󰁔 right', 'u': '󰁝 up', 'd': '󰁅 down'}
+        action = f"󰍉 focus {direction_map.get(arg, arg)}"
+    elif dispatcher == 'killactive':
+        action = "󰅖 close window"
+    elif dispatcher == 'togglefloating':
+        action = "󰖲 toggle floating"
+    elif dispatcher == 'togglesplit':
+        action = "󰤼 toggle split"
+    elif dispatcher == 'pseudo':
+        action = "󱗼 pseudo tile"
+    elif dispatcher == 'movewindow':
+        direction_map = {'l': '󰁍 left', 'r': '󰁔 right', 'u': '󰁝 up', 'd': '󰁅 down'}
+        action = f"󰜸 move window {direction_map.get(arg, arg)}"
+    elif dispatcher == 'resizeactive':
+        # Parse resize values like "-50 0" or "0 50"
+        parts = arg.split()
+        if len(parts) == 2:
+            x, y = parts
+            if x != '0':
+                if int(x) > 0:
+                    action = "󰩨 resize right"
+                else:
+                    action = "󰩨 resize left"
+            elif y != '0':
+                if int(y) > 0:
+                    action = "󰩨 resize down"
+                else:
+                    action = "󰩨 resize up"
+            else:
+                action = f"󰩨 resize {arg}"
+        else:
+            action = f"󰩨 resize {arg}"
+    elif dispatcher == 'fullscreen':
+        if arg == '0':
+            action = "󰊓 fullscreen"
+        elif arg == '1':
+            action = "󰊓 maximize"
+        else:
+            action = f"󰊓 fullscreen {arg}"
+    elif dispatcher == 'mouse':
+        action_map = {'movewindow': '󰩨 move window', 'resizewindow': '󰩨 resize window'}
+        action = action_map.get(arg, f"󰍽 {arg}")
+    else:
+        action = dispatcher.replace('toggle', '󰌆 toggle')
+        if arg:
+            action += f" {arg}"
+
+    # Add bind type indicator for special binds
+    if bind_type == 'bindle':
+        action += ' 󰑐'
+    elif bind_type == 'bindl':
+        action += ' 󰌾'
+
+    category = categorize_bind(bind)
+
+    return keybind, action, category
+
+def print_binds(binds, group_filter=None, colorize=True):
+    """Print formatted keybinds"""
+    formatted_binds = [format_bind(b) for b in binds]
+
+    # Group by category
+    groups = defaultdict(list)
+    for keybind, action, category in formatted_binds:
+        groups[category].append((keybind, action))
+
+    # Filter by group if specified
+    if group_filter:
+        if group_filter not in groups and group_filter not in CATEGORIES:
+            print(f"Unknown group: {group_filter}", file=sys.stderr)
+            print(f"Available groups: {', '.join(sorted(set(list(CATEGORIES.keys()) + ['other'])))}", file=sys.stderr)
+            sys.exit(1)
+        groups = {group_filter: groups.get(group_filter, [])}
+
+    # Find the longest keybind for alignment
+    all_binds = [kb for cat_binds in groups.values() for kb, _ in cat_binds]
+    max_keybind_len = max((len(kb) for kb in all_binds), default=20)
+
+    # Print grouped
+    category_order = ['workspace', 'window', 'exec', 'media', 'mouse', 'other']
+    first = True
+
+    for category in category_order:
+        if category not in groups or not groups[category]:
+            continue
+
+        if not first:
+            print()
+        first = False
+
+        # Get category info
+        cat_info = CATEGORIES.get(category, {'icon': '', 'name': category.upper()})
+        icon = cat_info['icon']
+        name = cat_info['name']
+
+        # Print header
+        if colorize:
+            print(f"\033[1;36m{icon} {name}\033[0m")
+        else:
+            print(f"{icon} {name}")
+
+        # Print binds in this category
+        for keybind, action in sorted(groups[category]):
+            if colorize:
+                print(f"\033[33m{keybind:<{max_keybind_len}}\033[0m  →  {action}")
+            else:
+                print(f"{keybind:<{max_keybind_len}}  →  {action}")
+
+def print_for_fzf(binds):
+    """Print formatted for fzf (no colors, one per line)"""
+    formatted_binds = [format_bind(b) for b in binds]
+
+    # Group by category
+    groups = defaultdict(list)
+    for keybind, action, category in formatted_binds:
+        groups[category].append((keybind, action))
+
+    # Find the longest keybind for alignment
+    all_binds = [kb for cat_binds in groups.values() for kb, _ in cat_binds]
+    max_keybind_len = max((len(kb) for kb in all_binds), default=20)
+
+    # Print with category prefix for fzf filtering
+    category_order = ['workspace', 'window', 'exec', 'media', 'mouse', 'other']
+
+    for category in category_order:
+        if category not in groups or not groups[category]:
+            continue
+
+        cat_info = CATEGORIES.get(category, {'icon': '', 'name': category.upper()})
+        icon = cat_info['icon']
+
+        for keybind, action in sorted(groups[category]):
+            print(f"{icon}  {keybind:<{max_keybind_len}}  →  {action}")
+
+def launch_fzf(binds):
+    """Launch fzf with the keybinds"""
+    try:
+        # Prepare input for fzf
+        import io
+        output = io.StringIO()
+        sys.stdout = output
+        print_for_fzf(binds)
+        sys.stdout = sys.__stdout__
+        fzf_input = output.getvalue()
+
+        # Launch fzf
+        subprocess.run(
+            ['fzf', '--ansi', '--reverse', '--border', '--header=Hyprland Keybinds', '--preview-window=hidden'],
+            input=fzf_input,
+            text=True
+        )
+    except FileNotFoundError:
+        print("fzf not found. Please install fzf.", file=sys.stderr)
+        sys.exit(1)
+    except KeyboardInterrupt:
+        pass
+
+def list_groups(colorize=True):
+    """List available groups"""
+    category_order = ['workspace', 'window', 'exec', 'media', 'mouse', 'other']
+
+    if colorize:
+        print("\033[1;36mAvailable Groups:\033[0m\n")
+    else:
+        print("Available Groups:\n")
+
+    for category in category_order:
+        cat_info = CATEGORIES.get(category, {'icon': '󰠱', 'name': category.upper()})
+        icon = cat_info['icon']
+        name = cat_info['name']
+
+        if colorize:
+            print(f"  \033[33m{category:<10}\033[0m  {icon} {name}")
+        else:
+            print(f"  {category:<10}  {icon} {name}")
+
+def main():
+    """Main function"""
+    parser = argparse.ArgumentParser(
+        description='Display Hyprland keybinds with icons',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  hyprkey              Show all keybinds
+  hyprkey -g           List available groups
+  hyprkey -g workspace Show only workspace keybinds
+  hyprkey -f           Launch interactive fzf picker
+
+Available groups: workspace, window, exec, media, mouse, other
+        """
+    )
+    parser.add_argument('-g', '--group', metavar='GROUP', nargs='?', const='',
+                        help='Show only keybinds from specific group (no arg = list groups)')
+    parser.add_argument('-f', '--fzf', action='store_true',
+                        help='Launch fzf for interactive searching')
+    parser.add_argument('--no-color', action='store_true',
+                        help='Disable colored output')
+
+    args = parser.parse_args()
+
+    # If -g with no argument, list groups
+    if args.group == '':
+        list_groups(colorize=not args.no_color)
+        return
+
+    # Get and parse binds
+    output = get_binds()
+    binds = parse_binds(output)
+
+    if not binds:
+        print("No keybinds found")
+        return
+
+    # Output based on mode
+    if args.fzf:
+        launch_fzf(binds)
+    else:
+        print_binds(binds, group_filter=args.group, colorize=not args.no_color)
+
+if __name__ == '__main__':
+    main()

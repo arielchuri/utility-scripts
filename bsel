@@ -1,0 +1,108 @@
+#!/bin/bash
+
+# Enhanced Buku + FZF Integration
+function bsel() {
+  # 1. Select a bookmark
+  local sel=$(buku -p -f 5 | fzf --height 40% --reverse --header "Search Bookmarks" | cut -f 1)
+
+  if [ -z "$sel" ]; then
+    return
+  fi
+
+  # 2. Show action menu
+  local action=$(echo -e "open\ntag\ndelete\ncopy-url" | fzf --height 40% --reverse --header "Choose Action for Bookmark #$sel")
+
+  if [ -z "$action" ]; then
+    return
+  fi
+
+  # 3. Perform the selected action
+  case "$action" in
+    open)
+      buku -o "$sel"
+      ;;
+    tag)
+      bsel_tag "$sel"
+      ;;
+    delete)
+      bsel_delete "$sel"
+      ;;
+    copy-url)
+      bsel_copy "$sel"
+      ;;
+  esac
+}
+
+# Tag a bookmark
+function bsel_tag() {
+  local id="$1"
+
+  # Get current bookmark info
+  local current_tags=$(buku -p "$id" -f 5 | cut -f 3)
+
+  # Get all unique tags from database + add "new" option
+  local all_tags=$(buku -p -f 5 | cut -f 3 | tr ',' '\n' | sort -u | grep -v '^$')
+  local tag_list=$(echo -e "[new tag]\n$all_tags")
+
+  # Let user select tag(s) - use multi-select
+  local selected_tag=$(echo "$tag_list" | fzf --height 40% --reverse --header "Current tags: $current_tags" --prompt "Add tag: ")
+
+  if [ -z "$selected_tag" ]; then
+    return
+  fi
+
+  if [ "$selected_tag" = "[new tag]" ]; then
+    read -p "Enter new tag: " new_tag
+    if [ -n "$new_tag" ]; then
+      selected_tag="$new_tag"
+    else
+      return
+    fi
+  fi
+
+  # Add tag to existing tags
+  if [ -n "$current_tags" ]; then
+    buku -u "$id" --tag "$current_tags,$selected_tag"
+  else
+    buku -u "$id" --tag "$selected_tag"
+  fi
+
+  echo "Tagged bookmark #$id with: $selected_tag"
+}
+
+# Delete a bookmark with confirmation
+function bsel_delete() {
+  local id="$1"
+
+  # Show bookmark details
+  echo "Bookmark to delete:"
+  buku -p "$id"
+
+  # Confirm deletion
+  local confirm=$(echo -e "no\nyes" | fzf --height 40% --reverse --header "Delete bookmark #$id?")
+
+  if [ "$confirm" = "yes" ]; then
+    buku -d "$id"
+    echo "Deleted bookmark #$id"
+  else
+    echo "Cancelled"
+  fi
+}
+
+# Copy URL to clipboard
+function bsel_copy() {
+  local id="$1"
+
+  # Extract URL (field 4 in format 5)
+  local url=$(buku -p "$id" -f 5 | cut -f 4)
+
+  if [ -n "$url" ]; then
+    echo -n "$url" | wl-copy
+    echo "Copied URL to clipboard: $url"
+  else
+    echo "Failed to extract URL"
+  fi
+}
+
+# Run the main function
+bsel "$@"

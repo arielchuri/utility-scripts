@@ -1,0 +1,99 @@
+#!/bin/bash
+# Simple script to generate modern-styled PDFs from markdown files using pandoc
+
+# Default config file
+DEFAULT_CONFIG="pdf-config-simple.yaml"
+
+# Show help
+show_help() {
+    cat << EOF
+Usage: $(basename "$0") [OPTIONS] input.md [output.pdf]
+
+Generate a PDF from a markdown file using pandoc.
+
+Arguments:
+  input.md        Input markdown file (required)
+  output.pdf      Output PDF file (optional, defaults to input.pdf)
+
+Options:
+  -c, --config FILE   Use specified YAML config file (default: $DEFAULT_CONFIG)
+  -h, --help          Show this help message
+
+Examples:
+  $(basename "$0") document.md
+  $(basename "$0") document.md output.pdf
+  $(basename "$0") -c pdf-config-single.yaml document.md
+  $(basename "$0") --config custom.yaml document.md report.pdf
+
+EOF
+}
+
+# Parse arguments
+CONFIG_FILE="$DEFAULT_CONFIG"
+INPUT_FILE=""
+OUTPUT_FILE=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -h|--help)
+            show_help
+            exit 0
+            ;;
+        -c|--config)
+            CONFIG_FILE="$2"
+            shift 2
+            ;;
+        *)
+            if [ -z "$INPUT_FILE" ]; then
+                INPUT_FILE="$1"
+            elif [ -z "$OUTPUT_FILE" ]; then
+                OUTPUT_FILE="$1"
+            else
+                echo "Error: Too many arguments"
+                echo "Use --help for usage information"
+                exit 1
+            fi
+            shift
+            ;;
+    esac
+done
+
+# Check if input file is provided
+if [ -z "$INPUT_FILE" ]; then
+    echo "Error: No input file specified"
+    echo "Use --help for usage information"
+    exit 1
+fi
+
+# Set default output file if not specified
+if [ -z "$OUTPUT_FILE" ]; then
+    OUTPUT_FILE="${INPUT_FILE%.md}.pdf"
+fi
+
+# Check if input file exists
+if [ ! -f "$INPUT_FILE" ]; then
+    echo "Error: Input file '$INPUT_FILE' not found"
+    exit 1
+fi
+
+# Check if config file exists
+if [ ! -f "$CONFIG_FILE" ]; then
+    echo "Error: Config file '$CONFIG_FILE' not found"
+    exit 1
+fi
+
+# Generate PDF with modern styling
+pandoc "$INPUT_FILE" \
+    --pdf-engine=pdflatex \
+    --metadata-file="$CONFIG_FILE" \
+    --from=markdown \
+    --to=pdf \
+    -o "$OUTPUT_FILE"
+
+if [ $? -eq 0 ]; then
+    echo "✓ PDF generated successfully: $OUTPUT_FILE"
+    echo "  Using config: $CONFIG_FILE"
+else
+    echo "✗ Error generating PDF"
+    exit 1
+fi
