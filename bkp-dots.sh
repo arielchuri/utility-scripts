@@ -19,6 +19,10 @@ cp -r ~/.config/rofi "$DEST/rofi" 2>/dev/null
 
 # Terminal
 cp -r ~/.config/kitty "$DEST/kitty" 2>/dev/null
+cp -r ~/.config/helix "$DEST/helix" 2>/dev/null
+
+# System & Session
+cp -r ~/.config/environment.d "$DEST/environment.d" 2>/dev/null
 
 # Shell
 cp ~/.bashrc "$DEST/.bashrc" 2>/dev/null

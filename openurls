@@ -1,0 +1,35 @@
+#!/bin/bash
+
+# Extract URLs and open them in the default browser.
+# Usage: openurls [FILE]
+# Or: cat file.txt | openurls
+
+# Regular expression for matching URLs
+URL_REGEX='(https?|ftp|file)://[-A-Za-z0-9\+&@#/%?=~_|!:,.;]*[-A-Za-z0-9\+&@#/%=~_|]'
+
+# Function to extract and open URLs
+process_text() {
+    # Use grep to find URLs, then iterate to open each
+    # -o only outputs the match
+    # -E uses extended regex
+    grep -oE "$URL_REGEX" | while read -r url; do
+        echo "Opening: $url"
+        xdg-open "$url" > /dev/null 2>&1
+    done
+}
+
+# Check if we should show help (no args and stdin is a terminal)
+if [ "$#" -eq 0 ] && [ -t 0 ]; then
+    echo "Usage: openurls [FILE] or pipe text into it."
+    echo "Example: echo 'Check https://google.com' | openurls"
+    exit 1
+fi
+
+# Check if arguments are provided
+if [ "$#" -ge 1 ]; then
+    # Input is from file(s)
+    cat "$@" | process_text
+else
+    # Otherwise read from stdin (works for pipes and redirection)
+    process_text
+fi
