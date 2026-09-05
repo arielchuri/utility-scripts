@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+exec /Users/arielchuri/Life/tools/claudegram/scripts/claudegram-botctl.sh "$@"
